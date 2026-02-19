@@ -1,0 +1,36 @@
+FROM apache/spark:3.5.1
+
+USER root
+
+# Install python + pip + jupyter + additional packages
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip && \
+    pip3 install --no-cache-dir \
+    jupyterlab \
+    notebook \
+    pandas \
+    numpy \
+    matplotlib \
+    seaborn \
+    scikit-learn \
+    pyarrow \
+    kafka-python \
+    pymongo \
+    joblib && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Note: TensorFlow/Keras will be installed separately if needed
+# because they're large and not always needed for Spark LR model
+
+# Spark paths
+ENV SPARK_HOME=/opt/spark
+ENV PYSPARK_PYTHON=python3
+
+# Make Python able to import pyspark + py4j shipped with Spark
+ENV PYTHONPATH=/opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.7-src.zip
+
+WORKDIR /opt/work
+
+EXPOSE 8888
+
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=", "--NotebookApp.password="]
