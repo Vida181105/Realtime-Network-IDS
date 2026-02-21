@@ -97,11 +97,11 @@ Top features by Random Forest importance (post outlier correction, `timestamp_un
 
 **Test set results:**
 
-| Metric | Ours | Paper |
-|--------|------|-------|
-| Accuracy | 0.8487 | 0.999 |
-| Weighted F1 | 0.8351 | ~0.99 |
-| Weighted Precision | 0.8442 | ~1.00 |
-| Weighted Recall | 0.8487 | ~1.00 |
+| Metric | Test |
+|--------|------|
+| Accuracy | 0.8487 |
+| Weighted F1 | 0.8351 |
+| Weighted Precision | 0.8442 |
+| Weighted Recall | 0.8487 |
 
 **Per-class analysis:** 10/15 classes achieve recall > 0.70. Infiltration (recall 0.038) and web-based attacks (Brute Force-Web/XSS, SQL Injection) show poor recall due to linear inseparability from Benign traffic — these classes share overlapping flow feature distributions that a linear decision boundary cannot resolve. This directly motivates the CNN and LSTM models.
