@@ -1,0 +1,197 @@
+{
+  "model": "Spark LR",
+  "n_features": 29,
+  "features": [
+    "Init Fwd Win Byts",
+    "Dst Port",
+    "Fwd Seg Size Min",
+    "Fwd Pkt Len Max",
+    "Fwd Header Len",
+    "Subflow Fwd Byts",
+    "TotLen Fwd Pkts",
+    "Flow Duration",
+    "Flow IAT Max",
+    "Fwd IAT Min",
+    "Flow IAT Min",
+    "Fwd Pkts/s",
+    "Fwd Seg Size Avg",
+    "Flow Pkts/s",
+    "Flow IAT Mean",
+    "Fwd IAT Max",
+    "Fwd Pkt Len Mean",
+    "Init Bwd Win Byts",
+    "Fwd IAT Mean",
+    "Fwd IAT Tot",
+    "Fwd Pkt Len Std",
+    "Bwd Pkt Len Mean",
+    "Pkt Len Std",
+    "Bwd Pkts/s",
+    "Bwd Seg Size Avg",
+    "Bwd Pkt Len Std",
+    "Tot Fwd Pkts",
+    "Pkt Size Avg",
+    "Subflow Fwd Pkts"
+  ],
+  "timestamp_removed": true,
+  "oversampling_floor": 5000,
+  "weight_config": {
+    "method": "inverse-frequency",
+    "max_weight": 15.0,
+    "benign_floor": 0.4
+  },
+  "hyperparameters": {
+    "family": "multinomial",
+    "maxIter": 150,
+    "regParam": 0.01,
+    "elasticNetParam": 0.5,
+    "scaler": "StandardScaler(withMean=True, withStd=True)"
+  },
+  "data_split": {
+    "train": 4026287,
+    "val": 861484,
+    "test": 863597
+  },
+  "class_weights": {
+    "SSH-Bruteforce": 2.044709,
+    "Infilteration": 2.375496,
+    "DDOS attack-HOIC": 0.55864,
+    "DoS attacks-SlowHTTPTest": 2.737909,
+    "DoS attacks-Hulk": 0.829619,
+    "DDoS attacks-LOIC-HTTP": 0.664878,
+    "DDOS attack-LOIC-UDP": 15.0,
+    "FTP-BruteForce": 1.983764,
+    "Benign": 0.4,
+    "Bot": 1.338876,
+    "Brute Force -Web": 15.0,
+    "Brute Force -XSS": 15.0,
+    "DoS attacks-GoldenEye": 9.200628,
+    "SQL Injection": 15.0,
+    "DoS attacks-Slowloris": 15.0
+  },
+  "class_counts_train": {
+    "SSH-Bruteforce": 131275,
+    "Infilteration": 112995,
+    "DDOS attack-HOIC": 480487,
+    "DoS attacks-SlowHTTPTest": 98038,
+    "DoS attacks-Hulk": 323545,
+    "DDoS attacks-LOIC-HTTP": 403712,
+    "DDOS attack-LOIC-UDP": 6303,
+    "FTP-BruteForce": 135308,
+    "Benign": 2101779,
+    "Bot": 200481,
+    "Brute Force -Web": 5517,
+    "Brute Force -XSS": 5216,
+    "DoS attacks-GoldenEye": 29174,
+    "SQL Injection": 5094,
+    "DoS attacks-Slowloris": 7667
+  },
+  "results_val": {
+    "accuracy": 0.847973,
+    "f1": 0.836245,
+    "weightedPrecision": 0.843173,
+    "weightedRecall": 0.847973
+  },
+  "results_test": {
+    "accuracy": 0.846932,
+    "f1": 0.835133,
+    "weightedPrecision": 0.841605,
+    "weightedRecall": 0.846932
+  },
+  "per_class_metrics": [
+    {
+      "Attack": "Benign",
+      "Precision": 0.8724,
+      "Recall": 0.9098,
+      "F1-Score": 0.8907
+    },
+    {
+      "Attack": "DDOS attack-HOIC",
+      "Precision": 0.951,
+      "Recall": 1.0,
+      "F1-Score": 0.9749
+    },
+    {
+      "Attack": "DDoS attacks-LOIC-HTTP",
+      "Precision": 0.7813,
+      "Recall": 0.7898,
+      "F1-Score": 0.7855
+    },
+    {
+      "Attack": "DoS attacks-Hulk",
+      "Precision": 0.8317,
+      "Recall": 0.9441,
+      "F1-Score": 0.8843
+    },
+    {
+      "Attack": "Bot",
+      "Precision": 0.6797,
+      "Recall": 0.4798,
+      "F1-Score": 0.5625
+    },
+    {
+      "Attack": "FTP-BruteForce",
+      "Precision": 0.6842,
+      "Recall": 0.785,
+      "F1-Score": 0.7312
+    },
+    {
+      "Attack": "SSH-Bruteforce",
+      "Precision": 0.9909,
+      "Recall": 0.7862,
+      "F1-Score": 0.8768
+    },
+    {
+      "Attack": "Infilteration",
+      "Precision": 0.6123,
+      "Recall": 0.046,
+      "F1-Score": 0.0856
+    },
+    {
+      "Attack": "DoS attacks-SlowHTTPTest",
+      "Precision": 0.6265,
+      "Recall": 0.5498,
+      "F1-Score": 0.5857
+    },
+    {
+      "Attack": "DoS attacks-GoldenEye",
+      "Precision": 0.5558,
+      "Recall": 0.7724,
+      "F1-Score": 0.6465
+    },
+    {
+      "Attack": "DoS attacks-Slowloris",
+      "Precision": 0.9505,
+      "Recall": 0.6832,
+      "F1-Score": 0.7949
+    },
+    {
+      "Attack": "DDOS attack-LOIC-UDP",
+      "Precision": 0.3236,
+      "Recall": 1.0,
+      "F1-Score": 0.489
+    },
+    {
+      "Attack": "Brute Force -Web",
+      "Precision": 0.0244,
+      "Recall": 0.2083,
+      "F1-Score": 0.0437
+    },
+    {
+      "Attack": "Brute Force -XSS",
+      "Precision": 0.0111,
+      "Recall": 0.3488,
+      "F1-Score": 0.0215
+    },
+    {
+      "Attack": "SQL Injection",
+      "Precision": 0.0,
+      "Recall": 0.0,
+      "F1-Score": 0.0
+    }
+  ],
+  "training_time_s": 919.29,
+  "training_time_min": 15.32,
+  "lr_iterations": 91,
+  "converged": true,
+  "timestamp": "2026-02-21 17:49:40"
+}
