@@ -1,0 +1,32 @@
+docker exec -it mongodb mongosh ids_results
+Current Mongosh Log ID:	699b44c601fef36d194f87fd
+Connecting to:		mongodb://127.0.0.1:27017/ids_results?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+2.5.8
+Using MongoDB:		6.0.26
+Using Mongosh:		2.5.8
+
+For mongosh info see: https://www.mongodb.com/docs/mongodb-shell/
+
+------
+   The server generated these startup warnings when booting
+   2026-02-22T15:32:45.679+00:00: Access control is not enabled for the database. Read and write access to data and configuration is unrestricted
+   2026-02-22T15:32:45.680+00:00: Soft rlimits for open file descriptors too low
+------
+
+ids_results> var total = db.predictions.countDocuments()
+
+ids_results> var total = db.predictions.countDocuments();
+
+ids_results> var correct = db.predictions.countDocuments({correct: true})
+
+ids_results> print("Total verifiable:", total)
+Total verifiable: 708779
+
+ids_results> print("Correct:", correct)
+Correct: 590700
+
+ids_results> print("Streaming accuracy:", (correct/total*100).toFixed(2) + "%")
+Streaming accuracy: 83.34%
+
+ids_results> db.alerts.countDocuments()
+380839
+ids_results> exit
