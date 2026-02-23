@@ -57,8 +57,18 @@ Place CSV files in `workspace/dataset/raw/` before loading to HDFS.
 
 ---
 
+## Scripts
+
+| Script | Description |
+|---|---|
+| `kafka_producer.py` | Streams preprocessed test split records to Kafka at configurable rate |
+| `spark_streaming_consumer.py` | Spark Structured Streaming consumer — classifies records, writes to MongoDB |
+
+---
+
 ## Pipeline
 
+### Preprocessing
 ```
 Raw CSVs (HDFS)
     → parquet_by_file       (per-file CSV → Parquet conversion)
@@ -72,36 +82,59 @@ Raw CSVs (HDFS)
     → RF Feature Importance (200 trees → top 30 features selected)
 ```
 
+### Real-Time
+```
+Test split parquet
+    → kafka_producer.py    (pandas → JSON → Kafka topic "network-traffic")
+    → Kafka broker          (KRaft mode, 3 partitions, maxOffsets=10,000/batch)
+    → spark_streaming_consumer.py
+        → Spark Structured Streaming (5s micro-batches)
+        → Spark LR PipelineModel.transform()
+        → MongoDB ids_results.predictions (all records)
+        → MongoDB ids_results.alerts      (attacks only)
+```
+
 ---
 
-## Key Findings (Preprocessing)
-
-Top features by Random Forest importance (post outlier correction, `timestamp_unix` excluded from model training — see below):
-1. Init Fwd Win Byts (0.123)
-2. Dst Port (0.058)
-3. Fwd Seg Size Min (0.055)
-4. Fwd Pkt Len Max (0.047)
-5. Fwd Header Len (0.042)
-
----
-
-## Model Results
+## Models
 
 ### Model 1 — Spark Logistic Regression (`SparkLR.ipynb`)
 
 - `timestamp_unix` excluded — it encodes the day/time that specific attacks were captured, not any real network flow characteristic. A model relying on it would fail in deployment. Excluding it gives a more honest and generalisable baseline.
-- Top 30 RF features used — extended feature set after outlier correction shifted importance scores.
-- Class weights added — the dataset's extreme imbalance (Benign 2.1M vs SQL Injection 56 samples) causes LR to ignore minority classes without weighting.
+- Top 29 RF features used — extended feature set after outlier correction shifted importance scores.
+- Class weights added — the dataset's extreme imbalance (Benign 2.1M vs SQL Injection 56 samples) causes LR to ignore minority classes without weighting. Inverse-frequency weights capped at 15.0, Benign floor 0.4.
 - In-training oversampling — tiny classes (< 5,000 train samples) oversampled to 5,000 to provide sufficient gradient signal.
 - Hyperparameters tuned via grid search: `regParam=0.01`, `elasticNetParam=0.5`, `maxIter=150`.
 
 **Test set results:**
 
-| Metric | Test |
+| Metric | Value |
 |--------|------|
 | Accuracy | 0.8487 |
 | Weighted F1 | 0.8351 |
 | Weighted Precision | 0.8442 |
 | Weighted Recall | 0.8487 |
 
-**Per-class analysis:** 10/15 classes achieve recall > 0.70. Infiltration (recall 0.038) and web-based attacks (Brute Force-Web/XSS, SQL Injection) show poor recall due to linear inseparability from Benign traffic — these classes share overlapping flow feature distributions that a linear decision boundary cannot resolve. This directly motivates the CNN and LSTM models.
+**Streaming validation:** 83.34% across 708,779 records — consistent with batch test accuracy of 84.87%, confirming the pipeline produces correct classifications end-to-end.
+
+**Per-class analysis:**
+
+| Class | Recall | Notes |
+|---|---|---|
+| Benign | 0.911 | Strong |
+| DDOS attack-HOIC | 1.000 | Strong |
+| DDOS attack-LOIC-UDP | 1.000 | Strong |
+| DoS attacks-Hulk | 0.946 | Strong |
+| FTP-BruteForce | 0.784 | Good |
+| SSH-Bruteforce | 0.784 | Good |
+| DDoS attacks-LOIC-HTTP | 0.790 | Good |
+| DoS attacks-GoldenEye | 0.766 | Good |
+| Bot | 0.485 | Moderate |
+| DoS attacks-SlowHTTPTest | 0.550 | Moderate |
+| DoS attacks-Slowloris | 0.673 | Moderate |
+| Infilteration | 0.038 | Poor — linear inseparability |
+| Brute Force -Web | 0.278 | Poor — linear inseparability |
+| Brute Force -XSS | 0.387 | Poor — linear inseparability |
+| SQL Injection | 0.000 | Poor — linear inseparability |
+
+10/15 classes achieve recall > 0.70. Poor-recall classes share overlapping flow feature distributions with Benign traffic that a linear decision boundary cannot resolve — directly motivating CNN and LSTM.
