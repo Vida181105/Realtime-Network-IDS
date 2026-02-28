@@ -454,6 +454,6 @@ print("Streaming accuracy:", (correct/total*100).toFixed(2) + "%")
 
 This project is partly based on the methodology described in:
 
-> Basnet, R., Shash, R., Johnson, C., Walgren, L., & Doleck, T. (2019). *Towards Detecting and Classifying Network Intrusion Traffic Using Deep Learning Frameworks*. Journal of Internet Services and Information Security, 9(4), 1–17.
+> Hagar, A. A., & Gawali, B. W. (2022). *Apache Spark and deep learning models for high-performance network intrusion detection using CSE-CIC-IDS2018.* Computational Intelligence and Neuroscience, 2022, Article 3131153. [https://doi.org/10.1155/2022/3131153](https://doi.org/10.1155/2022/3131153)
 
 The paper implements LR, CNN, and LSTM on the CIC-IDS-2018 dataset and reports 98–100% per-class accuracy for deep learning models. This project replicates the core methodology within a distributed big data pipeline, extending it with real-time Kafka streaming and MongoDB persistence.
