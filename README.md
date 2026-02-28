@@ -1,140 +1,459 @@
-# Real-Time Network Intrusion Detection System
-### Apache Spark + Deep Learning on CSE-CIC-IDS2018
+# Realtime Network Intrusion Detection System
 
-## Project Description
-
-Network intrusion detection is a critical component of modern cybersecurity infrastructure. Traditional signature-based IDS systems struggle to detect novel attacks and do not scale well to high-throughput network environments. This project explores the use of distributed computing and machine learning to build a scalable, high-performance IDS capable of both batch and real-time detection.
-
-Using the CSE-CIC-IDS2018 dataset — one of the most comprehensive publicly available network traffic datasets, containing over 16 million flow records across 14 attack categories — we train Spark MLlib Logistic Regression, CNN, and LSTM models using Apache Spark's distributed processing framework.
-
-The core novelty of this project: a real-time detection layer is implemented using Apache Kafka as a message broker and Spark Structured Streaming as the consumer. Network flow records are streamed through Kafka topics, classified by the trained model in near real-time, and results are persisted to MongoDB for monitoring and analysis. This end-to-end architecture mirrors how an IDS would function in a production environment.
-
-The entire stack runs on a single machine using Docker, demonstrating that distributed system concepts — HDFS for fault-tolerant storage, Spark for parallel in-memory computation, Kafka for decoupled stream ingestion — can be studied and validated without access to a multi-node cluster. All design decisions prioritize reproducibility and resource efficiency for constrained hardware environments.
+A real-time network intrusion detection system built on a distributed big data stack. The system ingests network traffic via Apache Kafka, classifies flows using machine learning models trained on the CIC-IDS-2018 dataset, and persists alerts to MongoDB. Three models are implemented and compared: Logistic Regression (Spark MLlib), CNN, and LSTM (Keras/TensorFlow).
 
 ---
 
-## Stack
+## Table of Contents
 
-| Service | Purpose |
-|---|---|
-| HDFS (namenode + datanode) | Distributed storage for 6.89GB dataset |
-| Apache Spark (standalone) | Distributed ML training |
-| Apache Kafka (KRaft mode) | Real-time stream ingestion |
-| MongoDB | Results storage |
-| JupyterLab | Development environment |
+- [Architecture](#architecture)
+- [Dataset](#dataset)
+- [Project Structure](#project-structure)
+- [Pipeline Overview](#pipeline-overview)
+- [Models](#models)
+- [Results](#results)
+- [Streaming Pipeline](#streaming-pipeline)
+- [Setup and Usage](#setup-and-usage)
+- [Technologies](#technologies)
+- [Reference](#reference)
 
-All services run in Docker on a single machine (developed on MacBook M3 Pro, 8GB RAM).
+---
+
+## Architecture
+
+```
+Raw CSVs (CIC-IDS-2018)
+        │
+        ▼
+┌─────────────────────┐
+│  Spark Preprocessing │  batch_preprocessing.ipynb
+│  - Clean & clip      │  - Drop nulls, clip outliers
+│  - Encode labels     │  - StringIndexer → label_idx
+│  - Feature selection │  - Random Forest importance
+│  - Stratified split  │  - Train / Val / Test (70/15/15)
+└────────┬────────────┘
+         │ HDFS (parquet)
+         ▼
+┌─────────────────────┐     ┌──────────────────────┐
+│   Spark MLlib LR    │     │  Keras CNN / LSTM     │
+│   SparkLR.ipynb     │     │  CNN_IDS.ipynb        │
+│   84.69% accuracy   │     │  LSTM_IDS.ipynb       │
+└────────┬────────────┘     │  ~95.3% accuracy      │
+         │ PipelineModel    └──────────────────────┘
+         │ (HDFS)
+         ▼
+┌─────────────────────────────────────────────────────┐
+│              Real-Time Streaming Pipeline            │
+│                                                      │
+│  Test Parquet ──► Kafka Producer ──► Kafka Topic     │
+│                   (pandas, 155 rec/s)  network-traffic│
+│                                           │          │
+│                              Spark Structured        │
+│                              Streaming Consumer      │
+│                              (5s micro-batches)      │
+│                                           │          │
+│                              LR PipelineModel        │
+│                              .transform()            │
+│                                           │          │
+│                         ┌─────────────────┴───────┐  │
+│                         │       MongoDB            │  │
+│                         │  ids_results.predictions │  │
+│                         │  ids_results.alerts      │  │
+│                         └─────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Dataset
 
-**CSE-CIC-IDS2018** — 16.23M rows, 84 features, 14 attack types + benign traffic.
+**CIC-IDS-2018** — Canadian Institute for Cybersecurity Intrusion Detection Dataset 2018
 
-Download from: https://www.unb.ca/cic/datasets/ids-2018.html
-
-Place CSV files in `workspace/dataset/raw/` before loading to HDFS.
-
----
-
-## Web UIs
-
-| UI | URL |
+| Property | Value |
 |---|---|
-| JupyterLab | http://localhost:8888 |
-| HDFS NameNode | http://localhost:9870 |
-| Spark Master | http://localhost:8080 |
-| Spark Jobs | http://localhost:4040 (active during jobs) |
+| Source | Canadian Institute for Cybersecurity |
+| Raw size | ~6.3M flow records |
+| Features | 80 network flow features |
+| Classes | 15 (1 Benign + 14 attack types) |
+| Format | CSV per day of capture |
+
+### Attack Classes
+
+| Label | Attack Type | Category |
+|---|---|---|
+| 0 | Benign | Normal traffic |
+| 1 | DDOS attack-HOIC | DDoS |
+| 2 | DDoS attacks-LOIC-HTTP | DDoS |
+| 3 | DoS attacks-Hulk | DoS |
+| 4 | Bot | Botnet |
+| 5 | FTP-BruteForce | Brute Force |
+| 6 | SSH-Bruteforce | Brute Force |
+| 7 | Infilteration | Infiltration |
+| 8 | DoS attacks-SlowHTTPTest | DoS |
+| 9 | DoS attacks-GoldenEye | DoS |
+| 10 | DoS attacks-Slowloris | DoS |
+| 11 | DDOS attack-LOIC-UDP | DDoS |
+| 12 | Brute Force -Web | Brute Force |
+| 13 | Brute Force -XSS | Web Attack |
+| 14 | SQL Injection | Web Attack |
 
 ---
 
-## Notebooks
+## Project Structure
 
-| Notebook | Description |
+```
+Realtime-Network-IDS/
+├── workspace/
+│   ├── notebooks/
+│   │   ├── batch_preprocessing.ipynb      # Spark data pipeline
+│   │   ├── SparkLR.ipynb                  # Logistic Regression model
+│   │   ├── CNN_IDS.ipynb                  # CNN model (Colab)
+│   │   └── LSTM_IDS.ipynb                 # LSTM model (Colab)
+│   ├── scripts/
+│   │   ├── kafka_producer.py              # Streams test records to Kafka
+│   │   └── spark_streaming_consumer.py    # Consumes, classifies, logs to MongoDB
+│   ├── output/
+│   │   ├── CNN/                           # CNN metrics, plots, confusion matrix
+│   │   ├── LSTM/                          # LSTM metrics, plots, confusion matrix
+│   │   └── SparkLR/                       # LR metrics, convergence plot
+│   └── logs/                              # Producer, consumer, MongoDB session logs
+├── docker-compose.yaml                    # Full stack: HDFS, Spark, Kafka, MongoDB
+├── Dockerfile.jupyter                     # Jupyter + PySpark environment
+└── README.md
+```
+
+---
+
+## Pipeline Overview
+
+### 1. Preprocessing (`batch_preprocessing.ipynb`)
+
+- Loads raw CIC-IDS-2018 CSVs into HDFS via Spark
+- Drops null rows, clips numerical outliers at 1st/99th percentile
+- Encodes string labels to integer indices via `StringIndexer`, saves `label_mapping` CSV
+- Trains a Random Forest to rank features by importance; selects **top 30** (excluding `timestamp_unix` to prevent data leakage — 29 final features)
+- Applies oversampling: classes with fewer than 5,000 training samples resampled with replacement
+- Stratified 70/15/15 train/val/test split saved as parquet to HDFS
+
+### 2. Feature Selection
+
+Top 29 features selected by Random Forest importance (`timestamp_unix` excluded to prevent leakage):
+
+`Init Fwd Win Byts`, `Dst Port`, `Fwd Seg Size Min`, `Fwd Pkt Len Max`, `Fwd Header Len`, `Subflow Fwd Byts`, `TotLen Fwd Pkts`, `Flow Duration`, `Flow IAT Max`, `Fwd IAT Min`, `Flow IAT Min`, `Fwd Pkts/s`, `Fwd Seg Size Avg`, `Flow Pkts/s`, `Flow IAT Mean`, `Fwd IAT Max`, `Fwd Pkt Len Mean`, `Init Bwd Win Byts`, `Fwd IAT Mean`, `Fwd IAT Tot`, `Fwd Pkt Len Std`, `Bwd Pkt Len Mean`, `Pkt Len Std`, `Bwd Pkts/s`, `Bwd Seg Size Avg`, `Bwd Pkt Len Std`, `Tot Fwd Pkts`, `Pkt Size Avg`, `Subflow Fwd Pkts`
+
+### 3. Class Imbalance Handling
+
+Both oversampling and inverse-frequency class weighting are applied across all models:
+
+| Method | Details |
 |---|---|
-| `batch_preprocessing.ipynb` | Full preprocessing pipeline: cleaning → outlier correction → balancing → encoding → stratified splits → RF feature selection |
-| `SparkLR.ipynb` | Spark Logistic Regression — Model 1 of 3, with class weights, oversampling, and hyperparameter tuning |
-
----
-
-## Scripts
-
-| Script | Description |
-|---|---|
-| `kafka_producer.py` | Streams preprocessed test split records to Kafka at configurable rate |
-| `spark_streaming_consumer.py` | Spark Structured Streaming consumer — classifies records, writes to MongoDB |
-
----
-
-## Pipeline
-
-### Preprocessing
-```
-Raw CSVs (HDFS)
-    → parquet_by_file       (per-file CSV → Parquet conversion)
-    → parquet_merged        (all 10 files unioned)
-    → parquet_clean         (drop inf/NaN, median imputation, remove bad label rows)
-    → parquet_clean_clipped (outlier correction: 99.5th percentile cap, both tails)
-    → parquet_balanced      (undersample Benign: 13.5M → 3M; oversample rare classes)
-    → parquet_encoded       (StringIndexer: Label string → label_idx integer 0–14)
-    → parquet_time          (Timestamp → timestamp_unix epoch seconds)
-    → splits_stratified     (stratified 70/15/15 train/val/test split)
-    → RF Feature Importance (200 trees → top 30 features selected)
-```
-
-### Real-Time
-```
-Test split parquet
-    → kafka_producer.py    (pandas → JSON → Kafka topic "network-traffic")
-    → Kafka broker          (KRaft mode, 3 partitions, maxOffsets=10,000/batch)
-    → spark_streaming_consumer.py
-        → Spark Structured Streaming (5s micro-batches)
-        → Spark LR PipelineModel.transform()
-        → MongoDB ids_results.predictions (all records)
-        → MongoDB ids_results.alerts      (attacks only)
-```
+| Oversampling | Minority classes resampled to 5,000 minimum training samples |
+| Class weights | Inverse-frequency, capped at 15.0, Benign floor at 0.4 |
 
 ---
 
 ## Models
 
-### Model 1 — Spark Logistic Regression (`SparkLR.ipynb`)
+### Model 1 — Spark Logistic Regression
 
-- `timestamp_unix` excluded — it encodes the day/time that specific attacks were captured, not any real network flow characteristic. A model relying on it would fail in deployment. Excluding it gives a more honest and generalisable baseline.
-- Top 29 RF features used — extended feature set after outlier correction shifted importance scores.
-- Class weights added — the dataset's extreme imbalance (Benign 2.1M vs SQL Injection 56 samples) causes LR to ignore minority classes without weighting. Inverse-frequency weights capped at 15.0, Benign floor 0.4.
-- In-training oversampling — tiny classes (< 5,000 train samples) oversampled to 5,000 to provide sufficient gradient signal.
-- Hyperparameters tuned via grid search: `regParam=0.01`, `elasticNetParam=0.5`, `maxIter=150`.
+Implemented natively in **Spark MLlib** as a full Pipeline (VectorAssembler → StandardScaler → LR), enabling direct use in the streaming consumer via `model.transform()`.
 
-**Test set results:**
+| Hyperparameter | Value |
+|---|---|
+| Family | Multinomial |
+| Max iterations | 150 |
+| Reg param | 0.01 (grid search) |
+| Elastic net param | 0.5 (grid search) |
+| Scaler | StandardScaler (withMean, withStd) |
+| Training time | 15.32 min |
+| Converged at | 91 iterations |
+
+### Model 2 — CNN (Convolutional Neural Network)
+
+```
+Input (29, 1)
+    │
+Conv1D (64 filters, kernel=3, relu, padding=same)
+    │
+MaxPooling1D (pool_size=2)
+    │
+Conv1D (128 filters, kernel=3, relu, padding=same)
+    │
+MaxPooling1D (pool_size=2)
+    │
+Flatten → Dense (200, relu) → Dropout (0.5)
+    │
+Dense (15, softmax)
+```
+
+| Hyperparameter | Value |
+|---|---|
+| Optimizer | Adam (lr=0.0001) |
+| Loss | Categorical crossentropy |
+| Batch size | 256 |
+| Epochs trained | 9 / 50 (early stopping) |
+| Training time | 20.22 min (T4 GPU) |
+
+### Model 3 — LSTM (Long Short-Term Memory)
+
+```
+Input (29, 1)
+    │
+LSTM (200 units, return_sequences=True) → Dropout (0.5)
+    │
+LSTM (200 units) → Dropout (0.5)
+    │
+Dense (15, softmax)
+```
+
+| Hyperparameter | Value |
+|---|---|
+| Optimizer | Adam (lr=0.0001) |
+| Loss | Categorical crossentropy |
+| Batch size | 256 |
+| Epochs trained | 9 / 50 (early stopping) |
+| Training time | ~81 min (T4 GPU) |
+
+> CNN and LSTM treat the 29 features as a 1D sequence (29 timesteps × 1 channel).
+
+---
+
+## Results
+
+### Overall Accuracy
+
+| Model | Test Accuracy | Weighted F1 | Macro F1 | Training Time |
+|---|---|---|---|---|
+| Spark LR | 84.69% | 0.8351 | 0.5781 | 15.32 min |
+| CNN | 95.27% | 0.9480 | 0.7253 | 20.22 min |
+| LSTM | 95.30% | ~0.9480 | ~0.7260 | ~81 min |
+
+CNN and LSTM achieve similar accuracy (~95.3%) but CNN trains ~4× faster. LR trades accuracy for distributed scalability — it is a native Spark PipelineModel and powers the real-time streaming pipeline.
+
+### Per-Class F1 Comparison
+
+| Attack | LR F1 | CNN F1 | LSTM F1 |
+|---|---|---|---|
+| Benign | 0.8907 | 0.9715 | 0.9735 |
+| DDOS attack-HOIC | 0.9749 | 0.9999 | 0.9999 |
+| DDoS attacks-LOIC-HTTP | 0.7855 | 0.9957 | 0.9960 |
+| DoS attacks-Hulk | 0.8843 | 0.9996 | 0.9994 |
+| Bot | 0.5625 | 0.9973 | 0.9985 |
+| FTP-BruteForce | 0.7312 | 0.7835 | 0.7471 |
+| SSH-Bruteforce | 0.8768 | 0.9990 | 0.9986 |
+| Infilteration | 0.0856 | 0.3340 | 0.3368 |
+| DoS attacks-SlowHTTPTest | 0.5857 | 0.5853 | 0.5918 |
+| DoS attacks-GoldenEye | 0.6465 | 0.9977 | 0.9959 |
+| DoS attacks-Slowloris | 0.7949 | 0.9733 | 0.9628 |
+| DDOS attack-LOIC-UDP | 0.4890 | 0.8134 | 0.8108 |
+| Brute Force -Web | 0.0437 | 0.3363 | 0.3213 |
+| Brute Force -XSS | 0.0215 | 0.0844 | 0.0857 |
+| SQL Injection | 0.0000 | 0.0082 | 0.0251 |
+
+> Infilteration, Brute Force -XSS, and SQL Injection remain challenging across all models due to extreme class imbalance (86–192 test samples vs 900K+ Benign) and feature overlap with majority classes.
+
+### LR Training Convergence
+
+![LR Convergence](workspace/output/SparkLR/lr_convergence.png)
+
+### LR Confusion Matrix
+
+![LR Confusion Matrix](workspace/output/SparkLR/lr_confusion_matrix.png)
+
+### CNN Training Curves
+
+![CNN Training Curves](workspace/output/CNN/cnn_training_curves.png)
+
+### CNN Confusion Matrix
+
+![CNN Confusion Matrix](workspace/output/CNN/cnn_confusion_matrix.png)
+
+### LSTM Training Curves
+
+![LSTM Training Curves](workspace/output/LSTM/lstm_training_curves.png)
+
+### LSTM Confusion Matrix
+
+![LSTM Confusion Matrix](workspace/output/LSTM/lstm_confusion_matrix.png)
+
+---
+
+## Streaming Pipeline
+
+The real-time pipeline uses the Spark LR model because it is a native Spark PipelineModel — classification requires only `model.transform(df)` with no additional preprocessing or reshaping. CNN/LSTM operate outside Spark and are not suitable for direct integration into Spark Structured Streaming without significant added complexity.
+
+### Flow
+
+```
+test_split/ (parquet)
+    │
+    ▼  kafka_producer.py (pandas, no Spark — avoids competing for worker cores)
+Kafka topic: network-traffic (3 partitions, KRaft mode)
+    │
+    ▼  spark_streaming_consumer.py
+Spark Structured Streaming (5s micro-batches, maxOffsetsPerTrigger=10,000)
+    │
+    ▼
+LR PipelineModel.transform()
+    │
+    ├──► MongoDB ids_results.predictions  (all records)
+    └──► MongoDB ids_results.alerts       (attacks only)
+```
+
+### Streaming Results (708,779 records)
 
 | Metric | Value |
-|--------|------|
-| Accuracy | 0.8487 |
-| Weighted F1 | 0.8351 |
-| Weighted Precision | 0.8442 |
-| Weighted Recall | 0.8487 |
+|---|---|
+| Total predictions | 708,779 |
+| Correct predictions | 590,700 |
+| Streaming accuracy | 83.34% |
+| Batch test accuracy | 84.69% |
+| Accuracy gap | 1.35% |
+| Total alerts generated | 380,839 |
+| Producer throughput | ~155 rec/s |
+| Consumer trigger interval | 5 seconds |
 
-**Streaming validation:** 83.34% across 708,779 records — consistent with batch test accuracy of 84.87%, confirming the pipeline produces correct classifications end-to-end.
+Streaming accuracy (83.34%) is within 1.5% of batch test accuracy (84.69%), validating pipeline consistency. The small gap is attributable to the sequential parquet file ordering — test split partitions are not shuffled across batches, causing per-batch class distributions to differ from the overall test distribution.
 
-**Per-class analysis:**
+### MongoDB Schema
 
-| Class | Recall | Notes |
+**`ids_results.predictions`** — all classified records:
+```json
+{
+  "batch_id": 42,
+  "detection_time": "2026-02-22 10:30:15",
+  "predicted_label": "DDoS attacks-LOIC-HTTP",
+  "prediction": 2,
+  "true_label": "DDoS attacks-LOIC-HTTP",
+  "label_idx": 2,
+  "correct": true,
+  "is_attack": true,
+  "is_high_priority": true
+}
+```
+
+**`ids_results.alerts`** — attacks only (subset of predictions where `is_attack = true`).
+
+---
+
+## Setup and Usage
+
+### Prerequisites
+
+- Docker Desktop (8GB RAM allocated minimum)
+- Python 3.10+
+
+### Start the Stack
+
+```bash
+docker-compose up -d
+```
+
+Services: `namenode`, `datanode`, `spark-master`, `spark-worker`, `spark-jupyter`, `kafka`, `mongodb`
+
+### Access Points
+
+| Service | URL |
+|---|---|
+| Jupyter (Spark) | http://localhost:9000 |
+| HDFS Namenode UI | http://localhost:9870 |
+| Spark Master UI | http://localhost:8080 |
+| MongoDB | mongodb://localhost:27017 |
+
+### 1. Run Preprocessing
+
+Open `workspace/notebooks/batch_preprocessing.ipynb` in Jupyter and run all cells. Outputs written to HDFS at `/user/spark/ids/processed/`.
+
+### 2. Train Logistic Regression
+
+Open `workspace/notebooks/SparkLR.ipynb` and run all cells. Model saved to HDFS at `/user/spark/ids/models/spark_lr`.
+
+### 3. Train CNN / LSTM (Google Colab)
+
+Copy data from HDFS:
+```bash
+docker exec -it namenode bash -c "hdfs dfs -get /user/spark/ids/processed/splits_stratified /tmp/splits"
+docker cp namenode:/tmp/splits ./workspace/dataset/splits_stratified
+
+docker exec -it namenode bash -c "hdfs dfs -get /user/spark/ids/processed/label_mapping /tmp/lm"
+docker cp namenode:/tmp/lm ./workspace/dataset/label_mapping
+
+docker exec -it namenode bash -c "hdfs dfs -get /user/spark/ids/processed/rf_feature_importance /tmp/rf"
+docker cp namenode:/tmp/rf ./workspace/dataset/rf_feature_importance
+```
+
+Upload `workspace/dataset/` to Google Drive under `ids-project/`, open `CNN_IDS.ipynb` or `LSTM_IDS.ipynb` in Colab, set Runtime → T4 GPU, update `DRIVE_BASE`, run all cells.
+
+### 4. Run the Streaming Pipeline
+
+Install dependencies:
+```bash
+docker exec -it spark-jupyter pip install kafka-python pymongo --break-system-packages
+```
+
+Create Kafka topic:
+```bash
+docker exec -it kafka bash -c "kafka-topics --bootstrap-server kafka:9092 \
+  --create --topic network-traffic --partitions 3 --replication-factor 1"
+```
+
+Copy test split locally:
+```bash
+docker exec -it namenode bash -c \
+  "hdfs dfs -get /user/spark/ids/processed/splits_stratified/test /tmp/test_split"
+docker cp namenode:/tmp/test_split ./workspace/dataset/test_split
+```
+
+Terminal 1 — Start consumer:
+```bash
+docker exec -it spark-jupyter python3 /opt/work/scripts/spark_streaming_consumer.py
+```
+
+Terminal 2 — Start producer:
+```bash
+docker exec -it spark-jupyter python3 /opt/work/scripts/kafka_producer.py --delay 0.005
+```
+
+### 5. Verify MongoDB Results
+
+```bash
+docker exec -it mongodb mongosh ids_results
+```
+```js
+db.predictions.countDocuments()
+db.alerts.countDocuments()
+db.alerts.aggregate([
+  {$group: {_id: "$predicted_label", count: {$sum: 1}}},
+  {$sort: {count: -1}}
+]).toArray()
+// Accuracy check
+var total = db.predictions.countDocuments()
+var correct = db.predictions.countDocuments({correct: true})
+print("Streaming accuracy:", (correct/total*100).toFixed(2) + "%")
+```
+
+---
+
+## Technologies
+
+| Component | Technology | Version |
 |---|---|---|
-| Benign | 0.911 | Strong |
-| DDOS attack-HOIC | 1.000 | Strong |
-| DDOS attack-LOIC-UDP | 1.000 | Strong |
-| DoS attacks-Hulk | 0.946 | Strong |
-| FTP-BruteForce | 0.784 | Good |
-| SSH-Bruteforce | 0.784 | Good |
-| DDoS attacks-LOIC-HTTP | 0.790 | Good |
-| DoS attacks-GoldenEye | 0.766 | Good |
-| Bot | 0.485 | Moderate |
-| DoS attacks-SlowHTTPTest | 0.550 | Moderate |
-| DoS attacks-Slowloris | 0.673 | Moderate |
-| Infilteration | 0.038 | Poor — linear inseparability |
-| Brute Force -Web | 0.278 | Poor — linear inseparability |
-| Brute Force -XSS | 0.387 | Poor — linear inseparability |
-| SQL Injection | 0.000 | Poor — linear inseparability |
+| Distributed storage | Apache HDFS | 3.3.x |
+| Distributed compute | Apache Spark | 3.5.1 |
+| ML — Logistic Regression | Spark MLlib | 3.5.1 |
+| ML — CNN / LSTM | TensorFlow / Keras | 2.x |
+| Message broker | Apache Kafka | KRaft mode |
+| Database | MongoDB | 6.0 |
+| Notebook environment | JupyterLab + PySpark | — |
+| Containerisation | Docker Compose | — |
+| Language | Python | 3.11 / 3.12 |
 
-10/15 classes achieve recall > 0.70. Poor-recall classes share overlapping flow feature distributions with Benign traffic that a linear decision boundary cannot resolve — directly motivating CNN and LSTM.
+---
+
+## Reference
+
+This project is partly based on the methodology described in:
+
+> Basnet, R., Shash, R., Johnson, C., Walgren, L., & Doleck, T. (2019). *Towards Detecting and Classifying Network Intrusion Traffic Using Deep Learning Frameworks*. Journal of Internet Services and Information Security, 9(4), 1–17.
+
+The paper implements LR, CNN, and LSTM on the CIC-IDS-2018 dataset and reports 98–100% per-class accuracy for deep learning models. This project replicates the core methodology within a distributed big data pipeline, extending it with real-time Kafka streaming and MongoDB persistence.
