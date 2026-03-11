@@ -72,7 +72,7 @@ Raw CSVs (CIC-IDS-2018)
 | Property | Value |
 |---|---|
 | Source | Canadian Institute for Cybersecurity |
-| Raw size | ~6.3M flow records |
+| Raw size | ~16.2M flow records |
 | Features | 80 network flow features |
 | Classes | 15 (1 Benign + 14 attack types) |
 | Format | CSV per day of capture |
